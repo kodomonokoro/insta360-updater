@@ -1,0 +1,27 @@
+[project]
+name = "insta360-uploader"
+version = "0.1.0"
+description = "Insta360 microSD footage -> stitched 360 video -> YouTube upload -> NAS archive pipeline"
+requires-python = ">=3.10"
+dependencies = [
+    "PyYAML>=6.0",
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+]
+
+[project.scripts]
+insta360-uploader = "insta360_uploader.cli:main"
+insta360-uploader-gui = "insta360_uploader.gui:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

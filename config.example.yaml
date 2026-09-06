@@ -1,0 +1,42 @@
+# Copy this file to config.yaml and fill in real paths/credentials.
+# config.yaml is gitignored — never commit real secrets.
+#
+# (The "what's already been processed" tracking file isn't configured here —
+# it's always created at data/processed.json next to this package.)
+
+source:
+  # Where Insta360 Studio's Batch Export ("360 Panorama" format) writes
+  # finished mp4s. A UNC path, assuming Windows already has authenticated
+  # access to it (saved credentials or domain membership).
+  nas_video_folder: "\\\\NAS\\insta360-exports"
+
+youtube:
+  # secrets/ is a folder at the project root (gitignored). Paths here are
+  # relative to wherever you run the command from — run it from the
+  # project root, or use absolute paths if you run it from elsewhere.
+  client_secret_path: "secrets/youtube_client_secret.json"
+  token_path: "secrets/youtube_token.json"
+
+youtube_defaults:
+  title_prefix: "crotchet rest 360"
+  privacy_status: unlisted   # public | unlisted | private
+  made_for_kids: false
+  # Optional. If set, each uploaded video is also added to this existing
+  # unlisted playlist (playlistItems().insert — additive only, never
+  # removes anything). Useful for embedding the playlist somewhere members
+  # can see it, instead of sharing each video's URL individually. Requires
+  # the youtube_uploader.py SCOPES to include the full "youtube" scope
+  # (not just "youtube.upload") — re-run auth-youtube after changing it.
+  # playlist_id: "PLxxxxxxxxxxxxxxxx"
+
+# Optional. Remove this whole section to skip audio extraction / Drive
+# upload entirely and only upload video to YouTube.
+google_drive:
+  client_secret_path: "secrets/gdrive_client_secret.json"
+  token_path: "secrets/gdrive_token.json"
+  folder_id: ""   # leave empty to upload to Drive root
+  # If set, uploads go into a "{subfolder_prefix}_{YYYYMMDD}" subfolder
+  # (created automatically if it doesn't exist yet) under folder_id,
+  # YYYYMMDD being the video's capture date. Requires folder_id to be set.
+  # Leave unset to upload directly into folder_id instead.
+  # subfolder_prefix: "practice"

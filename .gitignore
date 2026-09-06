@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# local runtime state — never commit secrets or generated media
+config.yaml
+secrets/
+*.sqlite3
+data/
+work/
+stitched/
+*.token.json
+client_secret*.json
+token*.json
