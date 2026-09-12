@@ -24,6 +24,7 @@ surfacing; machine-written JSON has no such hand-authoring failure mode).
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from insta360_uploader.config import (
@@ -36,20 +37,30 @@ from insta360_uploader.config import (
 )
 
 
+def _app_root() -> Path:
+    """Project root when run from source (.../src/insta360_uploader/this
+    file's parents[2]); the folder containing the .exe when frozen by
+    PyInstaller (onedir or onefile — sys.executable is the real launched
+    exe's path in both, never the temp extraction dir, so this is stable
+    and next to wherever the user actually put the app, matching how
+    `data/`/`secrets/` already work when run from source)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
 def default_settings_path() -> Path:
-    """<project root>/data/settings.json — the tracked, always-blank
+    """<app root>/data/settings.json — the tracked, always-blank
     template shipped with the repo. See local_settings_path() for where
     a real user's actual settings live."""
-    project_root = Path(__file__).resolve().parents[2]
-    return project_root / "data" / "settings.json"
+    return _app_root() / "data" / "settings.json"
 
 
 def local_settings_path() -> Path:
-    """<project root>/data/settings.local.json — gitignored; this is
-    where a real user's actual settings (paths, Drive folder ID,
-    playlist ID) live, never in the tracked settings.json."""
-    project_root = Path(__file__).resolve().parents[2]
-    return project_root / "data" / "settings.local.json"
+    """<app root>/data/settings.local.json — gitignored; this is where a
+    real user's actual settings (paths, Drive folder ID, playlist ID)
+    live, never in the tracked settings.json."""
+    return _app_root() / "data" / "settings.local.json"
 
 
 def _blank_app_config() -> AppConfig:

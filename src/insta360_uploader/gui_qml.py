@@ -18,14 +18,30 @@ from insta360_uploader.gui_backend.settings_model import SettingsModel
 from insta360_uploader.processed_store import ProcessedStore
 from insta360_uploader.settings_store import load_app_config
 
-_QML_DIR = Path(__file__).parent / "qml"
+# PyInstaller (onefile or onedir) extracts/places bundled data files
+# (qml/, assets/ — see the "insta360_uploader.qml"/"insta360_uploader.assets"
+# --add-data destinations in the build spec) under sys._MEIPASS, which is
+# set in both modes; Path(__file__) instead would resolve inside a
+# synthetic frozen-module path that doesn't reflect where real files
+# actually landed on disk. When run from source there's no _MEIPASS, so
+# this falls back to the normal package-relative path.
+if getattr(sys, "frozen", False):
+    _QML_DIR = Path(sys._MEIPASS) / "insta360_uploader" / "qml"
+else:
+    _QML_DIR = Path(__file__).parent / "qml"
 
 # Terminal stdout/stderr capture proved unreliable for this GUI subprocess
 # in this dev environment (Git Bash + Windows console redirection), so Qt
 # warnings/errors (including QML binding errors and console.log) are routed
 # straight to a file instead — kept as an ongoing diagnostic aid for the
-# rest of this migration, not just a one-off debug session.
-_DEBUG_LOG = Path(__file__).parent.parent.parent / "gui_qml_debug.log"
+# rest of this migration, not just a one-off debug session. Written next to
+# the .exe when frozen (matching settings_store.py's _app_root()), not
+# under _MEIPASS — that's for bundled read-only resources, not runtime
+# output, and for onefile it's a temp dir wiped out when the app closes.
+if getattr(sys, "frozen", False):
+    _DEBUG_LOG = Path(sys.executable).resolve().parent / "gui_qml_debug.log"
+else:
+    _DEBUG_LOG = Path(__file__).parent.parent.parent / "gui_qml_debug.log"
 
 
 def _debug_message_handler(msg_type, context, message):

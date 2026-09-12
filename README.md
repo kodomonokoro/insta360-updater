@@ -100,6 +100,26 @@ checked between clips/stages, so whatever single copy/stitch/upload is
 already in flight always finishes on its own first before the run actually
 stops.
 
+## Building a distributable app
+
+```powershell
+.venv\Scripts\python -m pip install -e ".[build]"
+.venv\Scripts\python build_exe.py
+```
+
+Produces `dist/Insta360Updater/` (a folder — copy the whole folder to
+distribute, not just the .exe inside it; ~360MB). Uses PyInstaller
+(`insta360-uploader.spec`) plus a post-build trim of Qt components this
+app never uses (WebEngine, 3D, Multimedia, etc. — PySide6's own
+PyInstaller hooks pull these in regardless of what the spec excludes, so
+`build_exe.py` deletes them after the build rather than fighting the
+hooks; always use this script instead of calling `pyinstaller` directly).
+On first run, the built app creates its own blank `data/settings.local.json`
+next to the .exe — same settings.json/settings.local.json behavior as
+running from source (see Setup above), just rooted at the .exe's own
+folder instead of the project root. A `secrets/` folder placed next to
+the .exe works the same way too.
+
 ## Tests
 
 ```powershell
