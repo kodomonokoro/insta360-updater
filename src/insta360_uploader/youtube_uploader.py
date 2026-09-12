@@ -59,6 +59,55 @@ def _load_credentials(profile: YoutubeProfile) -> Credentials:
     return creds
 
 
+def _get_uploads_playlist_id(youtube) -> str:
+    response = youtube.channels().list(part="contentDetails", mine=True).execute()
+    items = response.get("items", [])
+    if not items:
+        raise UploadError("could not find the authenticated channel")
+    return items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+
+
+def _find_existing_video(youtube, title: str) -> str | None:
+    """Look for an already-uploaded video with this exact title, by paging
+    through the channel's own uploads — read-only, never creates or
+    modifies anything. YouTube's search.list() only does fuzzy relevance
+    search, so an exact-title check needs this instead (same idea as
+    gdrive_uploader._find_existing_file, adapted to what the API offers)."""
+    uploads_playlist_id = _get_uploads_playlist_id(youtube)
+    page_token = None
+    while True:
+        response = (
+            youtube.playlistItems()
+            .list(
+                playlistId=uploads_playlist_id,
+                part="snippet",
+                maxResults=50,
+                pageToken=page_token,
+            )
+            .execute()
+        )
+        for item in response.get("items", []):
+            snippet = item["snippet"]
+            if snippet.get("title") == title:
+                return snippet["resourceId"]["videoId"]
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            return None
+
+
+def video_exists(profile: YoutubeProfile, video_id: str) -> bool:
+    """False if the video was deleted or never existed.
+
+    Used to double-check a previously-recorded youtube_video_id before
+    skipping a re-upload — the local processed-store record alone can't
+    tell if the video was since removed on YouTube's side.
+    """
+    creds = _load_credentials(profile)
+    youtube = build("youtube", "v3", credentials=creds)
+    response = youtube.videos().list(part="id", id=video_id).execute()
+    return bool(response.get("items"))
+
+
 def upload_video(
     profile: YoutubeProfile,
     video_path: Path,
@@ -68,9 +117,24 @@ def upload_video(
     privacy_status: str = "private",
     made_for_kids: bool = False,
     progress_callback: Callable[[float], None] | None = None,
+    log: Callable[[str], None] | None = None,
+    on_skip: Callable[[], None] | None = None,
 ) -> str:
     creds = _load_credentials(profile)
     youtube = build("youtube", "v3", credentials=creds)
+
+    # Never re-upload a video that's already there under this exact title
+    # — YouTube doesn't dedup by name itself, so without this a retry (or
+    # a stale/missing local record) would create a duplicate video every
+    # time. Mirrors gdrive_uploader.upload_file's own name-based
+    # existing-file check.
+    existing_id = _find_existing_video(youtube, title)
+    if existing_id is not None:
+        if on_skip:
+            on_skip()
+        if log:
+            log(f"'{title}' already exists on YouTube, reusing it (skipped upload)")
+        return existing_id
 
     body = {
         "snippet": {"title": title, "description": description},
@@ -89,7 +153,11 @@ def upload_video(
 
     response = None
     while response is None:
-        status, response = request.next_chunk()
+        # num_retries: the client library's own exponential-backoff retry
+        # for transient errors (5xx, connection resets, etc.) on each
+        # chunk — without it, a single transient error (seen in practice:
+        # a Google-side 502) aborts the whole upload immediately.
+        status, response = request.next_chunk(num_retries=5)
         if status and progress_callback:
             progress_callback(status.progress())
 
@@ -99,11 +167,40 @@ def upload_video(
     return video_id
 
 
-def add_video_to_playlist(profile: YoutubeProfile, video_id: str, playlist_id: str) -> None:
+def _find_playlist_item(youtube, playlist_id: str, video_id: str) -> str | None:
+    """Returns the existing playlistItem id if video_id is already in the
+    playlist, else None — read-only, never creates or modifies anything."""
+    page_token = None
+    while True:
+        response = (
+            youtube.playlistItems()
+            .list(playlistId=playlist_id, part="snippet", maxResults=50, pageToken=page_token)
+            .execute()
+        )
+        for item in response.get("items", []):
+            if item["snippet"]["resourceId"]["videoId"] == video_id:
+                return item["id"]
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            return None
+
+
+def add_video_to_playlist(
+    profile: YoutubeProfile,
+    video_id: str,
+    playlist_id: str,
+    log: Callable[[str], None] | None = None,
+) -> None:
     """Purely additive (playlistItems().insert) — never removes anything
-    from the playlist."""
+    from the playlist. Skips if the video is already in it, so re-running
+    an already-added video doesn't create a duplicate playlist entry."""
     creds = _load_credentials(profile)
     youtube = build("youtube", "v3", credentials=creds)
+
+    if _find_playlist_item(youtube, playlist_id, video_id) is not None:
+        if log:
+            log(f"video {video_id} already in playlist {playlist_id}, skipping")
+        return
 
     body = {
         "snippet": {

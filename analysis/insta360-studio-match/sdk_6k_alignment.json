@@ -1,0 +1,23 @@
+[
+  {
+    "sdk_frame": 300,
+    "studio_frame": 54240,
+    "studio_minus_sdk_frames": 53940,
+    "mse": 2.8095312118530273,
+    "next_best_mse": 3.3991405963897705
+  },
+  {
+    "sdk_frame": 2100,
+    "studio_frame": 56040,
+    "studio_minus_sdk_frames": 53940,
+    "mse": 2.698671817779541,
+    "next_best_mse": 11.655077934265137
+  },
+  {
+    "sdk_frame": 3900,
+    "studio_frame": 57840,
+    "studio_minus_sdk_frames": 53940,
+    "mse": 2.6134374141693115,
+    "next_best_mse": 3.8346874713897705
+  }
+]

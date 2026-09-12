@@ -1,6 +1,14 @@
-"""Builds YouTube titles as "{prefix} - {YYYYMMDD} {NN}", numbering same-day
-videos in capture-time order and never reusing a number already recorded
-in the processed store (so numbering stays consistent across separate runs).
+"""Builds YouTube titles as "{prefix} - {YYYYMMDD} {HHMM}", using the
+video's actual capture start time rather than a per-day sequence number.
+
+A sequence number (01, 02, ...) was tried first, numbered in capture-time
+order — but that order only holds if same-day videos are all processed
+together in one run. Insta360 Studio's export is slow enough that videos
+get uploaded one at a time as each finishes, in whatever order that happens
+to be, so a per-day counter can end up out of chronological order across
+separate runs. The capture time itself doesn't have that problem: it's
+already unique to the minute for a single camera and never depends on
+processing order.
 """
 from __future__ import annotations
 
@@ -9,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 
 from insta360_uploader.nas_scanner import VideoFile
-from insta360_uploader.processed_store import ProcessedStore
 
 _TIMESTAMP_RE = re.compile(r"(\d{8})_(\d{6})")
 
@@ -21,35 +28,10 @@ def extract_capture_datetime(path: Path) -> datetime:
     return datetime.fromtimestamp(path.stat().st_mtime)
 
 
-def _title_pattern(prefix: str) -> re.Pattern:
-    return re.compile(rf"^{re.escape(prefix)} - (\d{{8}}) (\d{{2}})$")
+def title_for_video(prefix: str, video: VideoFile) -> str:
+    """Derive the stable destination title from this source video alone."""
+    return f"{prefix} - {extract_capture_datetime(video.path).strftime('%Y%m%d %H%M')}"
 
 
-def assign_titles(
-    prefix: str, store: ProcessedStore, new_videos: list[VideoFile]
-) -> dict[str, str]:
-    pattern = _title_pattern(prefix)
-    used_by_date: dict[str, set[int]] = {}
-    for record in store.list_all():
-        if not record.video_title:
-            continue
-        match = pattern.match(record.video_title)
-        if match:
-            used_by_date.setdefault(match.group(1), set()).add(int(match.group(2)))
-
-    videos_with_dt = sorted(
-        ((video, extract_capture_datetime(video.path)) for video in new_videos),
-        key=lambda item: item[1],
-    )
-
-    titles: dict[str, str] = {}
-    for video, dt in videos_with_dt:
-        date_str = dt.strftime("%Y%m%d")
-        used = used_by_date.setdefault(date_str, set())
-        seq = 1
-        while seq in used:
-            seq += 1
-        used.add(seq)
-        titles[video.key] = f"{prefix} - {date_str} {seq:02d}"
-
-    return titles
+def assign_titles(prefix: str, new_videos: list[VideoFile]) -> dict[str, str]:
+    return {video.key: title_for_video(prefix, video) for video in new_videos}

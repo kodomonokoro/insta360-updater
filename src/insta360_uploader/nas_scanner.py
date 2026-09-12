@@ -15,12 +15,21 @@ VIDEO_EXTENSIONS = (".mp4", ".mov")
 class VideoFile:
     key: str
     path: Path
+    # Non-empty only for camera_scanner.py clips the camera split into
+    # multiple .insv files (a long recording hitting its length limit) —
+    # `path` is then just the first chapter, kept for display purposes
+    # (capture date etc.); intake.py's copy_raw/stitch iterate this
+    # instead. Always empty for nas_scanner's own already-stitched .mp4s.
+    chapter_paths: tuple[Path, ...] = ()
 
     @property
     def source_hash(self) -> str:
-        """Stable identity for dedupe: filename + size, not full content."""
-        stat = self.path.stat()
-        digest = hashlib.sha256(f"{self.path.name}:{stat.st_size}".encode("utf-8"))
+        """Stable identity for dedupe: filename + size, not full content.
+        Covers every chapter when there are several, so adding/losing a
+        chapter changes the hash."""
+        paths = self.chapter_paths or (self.path,)
+        parts = [f"{p.name}:{p.stat().st_size}" for p in paths]
+        digest = hashlib.sha256("|".join(parts).encode("utf-8"))
         return digest.hexdigest()
 
 

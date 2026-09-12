@@ -1,23 +1,16 @@
-"""JSON-backed record of what has been processed, to avoid reprocessing
-and to answer `insta360-uploader status`. Never deletes source footage —
-this module only tracks state about it.
+"""In-memory execution state only. No history is read or persisted.
 
-A plain JSON file (rather than SQLite) since this is a single-user,
-single-process tool processing at most a few hundred videos — the whole
-file is small enough to read/rewrite each time, and it's easy to open and
-read directly if something looks wrong.
-
-No path needs to be configured: by default the file lives in a `data/`
-folder next to wherever this package is installed, so nothing here depends
-on an absolute path in config.yaml.
+The legacy class name remains for pipeline callers. Artifact existence,
+not these records, determines the displayed completion state.
 """
 from __future__ import annotations
 
-import json
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
+STATUS_COPYING_RAW = "copying_raw"
+STATUS_STITCHING = "stitching"
 STATUS_PENDING = "pending"
 STATUS_UPLOADING_VIDEO = "uploading_video"
 STATUS_EXTRACTING_AUDIO = "extracting_audio"
@@ -26,29 +19,8 @@ STATUS_DONE = "done"
 STATUS_FAILED = "failed"
 
 
-def default_store_path() -> Path:
-    """<project root>/data/processed.json — project root is three levels
-    up from this file (src/insta360_uploader/processed_store.py -> src ->
-    project root)."""
-    project_root = Path(__file__).resolve().parents[2]
-    return project_root / "data" / "processed.json"
-
-
 @dataclass(frozen=True)
 class ClipRecord:
-    """`drive_file_id` (and `youtube_video_id`) are a cache/reference, not
-    a source of truth: they let the GUI render status and let the
-    pipeline skip a costly re-extraction+re-check without hitting the
-    Drive/YouTube API on every video, every run. They must never be
-    trusted on their own to decide "is this actually still there" —
-    see gdrive_uploader.file_exists() and pipeline.process_video(), which
-    always re-verify against the live Drive state before skipping or
-    creating anything. If you change this file, keep that verification —
-    do not turn `drive_file_id is not None` back into "definitely uploaded,
-    skip unconditionally" (that was a real bug once; see git history /
-    project memory on this).
-    """
-
     clip_key: str
     source_files_hash: str
     status: str
@@ -58,6 +30,11 @@ class ClipRecord:
     error: str | None = None
     created_at: str = ""
     updated_at: str = ""
+    # The status right before mark_failed() overwrote it to STATUS_FAILED —
+    # otherwise a failure late in the pipeline (e.g. the YouTube upload)
+    # would erase all evidence that copy/stitch had already succeeded. None
+    # for records from before this field existed, or that never failed.
+    last_status: str | None = None
 
 
 def _now() -> str:
@@ -65,46 +42,43 @@ def _now() -> str:
 
 
 class ProcessedStore:
-    def __init__(self, path: str | Path | None = None):
-        self._path = Path(path) if path is not None else default_store_path()
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        if not self._path.is_file():
-            self._write({})
+    def __init__(self):
+        self._data = {}
+
+    def clear(self) -> None:
+        self._data = {}
 
     def _read(self) -> dict[str, dict]:
-        with self._path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+        return deepcopy(self._data)
 
     def _write(self, data: dict[str, dict]) -> None:
-        # write to a temp file then replace, so a crash mid-write can't
-        # corrupt the existing file
-        tmp_path = self._path.with_suffix(".json.tmp")
-        with tmp_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp_path.replace(self._path)
+        self._data = data
 
     def get(self, clip_key: str) -> ClipRecord | None:
         data = self._read()
         record = data.get(clip_key)
         return ClipRecord(**record) if record else None
 
-    def is_done(self, clip_key: str, source_files_hash: str) -> bool:
-        record = self.get(clip_key)
-        return (
-            record is not None
-            and record.status == STATUS_DONE
-            and record.source_files_hash == source_files_hash
-        )
-
     def upsert_pending(
         self, clip_key: str, source_files_hash: str, video_title: str | None = None
     ) -> None:
-        """Create or reset a clip's tracking row.
+        """Create or reset a clip's tracking row for a fresh run.
 
-        `video_title` is only stored the first time a clip is seen — a
-        retry never overwrites an already-assigned title, so re-running
-        after a failure keeps the same YouTube title instead of
-        renumbering it.
+        `video_title` is passed in already resolved by the caller (which
+        reads the prior record itself before this reset, if one exists) —
+        a retry keeps the same YouTube title instead of renumbering it.
+
+        `youtube_video_id`/`drive_file_id` are deliberately NOT preserved
+        here — every real run start wipes them, so the GUI never blends
+        "what actually happened this run" with a stale result left over
+        from a completely different earlier run/pipeline for the same
+        clip (that confusion was a real reported bug). This is safe:
+        `gdrive_uploader.upload_file()`/`youtube_uploader.upload_video()`
+        both independently re-check the live Drive/YouTube state by name
+        before creating anything (see their own docstrings/comments), and
+        `copy_raw()`/`stitch()`/`extract_audio()` each check the actual
+        destination file's existence — so a wiped cache costs a few extra
+        by-name lookups on retry, never a duplicate upload or re-copy.
         """
         data = self._read()
         existing = data.get(clip_key)
@@ -113,12 +87,13 @@ class ProcessedStore:
             clip_key=clip_key,
             source_files_hash=source_files_hash,
             status=STATUS_PENDING,
-            video_title=(existing.get("video_title") if existing else None) or video_title,
-            youtube_video_id=existing.get("youtube_video_id") if existing else None,
-            drive_file_id=existing.get("drive_file_id") if existing else None,
+            video_title=video_title,
+            youtube_video_id=None,
+            drive_file_id=None,
             error=None,
             created_at=existing.get("created_at") if existing else now,
             updated_at=now,
+            last_status=None,
         )
         data[clip_key] = asdict(record)
         self._write(data)
@@ -130,13 +105,27 @@ class ProcessedStore:
         *,
         youtube_video_id: str | None = None,
         drive_file_id: str | None = None,
+        clear_youtube_video_id: bool = False,
+        clear_drive_file_id: bool = False,
     ) -> None:
+        """`youtube_video_id`/`drive_file_id` are only ever set here, never
+        cleared by simply omitting them (omitting keeps whatever was there
+        before). Use `clear_youtube_video_id`/`clear_drive_file_id` when a
+        previously-recorded id is being deliberately redone (e.g. it no
+        longer exists on YouTube/Drive) — otherwise the stale id lingers
+        and makes the GUI show that stage as already done while the new
+        upload is still in progress.
+        """
         data = self._read()
         record = data[clip_key]
         record["status"] = status
-        if youtube_video_id is not None:
+        if clear_youtube_video_id:
+            record["youtube_video_id"] = None
+        elif youtube_video_id is not None:
             record["youtube_video_id"] = youtube_video_id
-        if drive_file_id is not None:
+        if clear_drive_file_id:
+            record["drive_file_id"] = None
+        elif drive_file_id is not None:
             record["drive_file_id"] = drive_file_id
         record["updated_at"] = _now()
         self._write(data)
@@ -144,6 +133,8 @@ class ProcessedStore:
     def mark_failed(self, clip_key: str, error: str) -> None:
         data = self._read()
         record = data[clip_key]
+        if record["status"] != STATUS_FAILED:
+            record["last_status"] = record["status"]
         record["status"] = STATUS_FAILED
         record["error"] = error
         record["updated_at"] = _now()

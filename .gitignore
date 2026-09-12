@@ -8,12 +8,29 @@ dist/
 .pytest_cache/
 
 # local runtime state — never commit secrets or generated media
-config.yaml
 secrets/
 *.sqlite3
-data/
+# data/settings.json is tracked on purpose but stays a blank template —
+# a real user's actual settings (paths, Drive folder ID, playlist ID;
+# never secrets or OAuth tokens, which live under secrets/ instead) live
+# in data/settings.local.json instead, which stays gitignored via the
+# data/* wildcard below (no negation for it, unlike settings.json).
+data/*
+!data/settings.json
 work/
 stitched/
+sdk/
 *.token.json
 client_secret*.json
 token*.json
+*.log
+
+# analysis/insta360-studio-match/outputs|logs hold raw test-stitch video
+# output (currently ~9GB) — never commit these; results/ and scripts/
+# (small, and results/comparison.md is linked from README) stay tracked.
+analysis/*/outputs/
+analysis/*/logs/
+# Per-frame raw analysis data (tens of MB, reproducible via scripts/) —
+# keep only the derived summaries/comparisons, not the raw frame dumps.
+analysis/*/*_frames.json
+analysis/*/*_frames.csv

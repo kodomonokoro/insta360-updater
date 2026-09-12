@@ -1,0 +1,48 @@
+{
+  "studio_start_frame": 53940,
+  "frame_count": 4437,
+  "duration": 148.0479,
+  "studio": {
+    "bitrate": 50024742.58668985,
+    "second_min": 38148936.0,
+    "second_max": 65017432.0,
+    "second_mean": 50023951.94594595,
+    "second_cv": 0.06814925460998116,
+    "types": {
+      "I": {
+        "count": 148,
+        "mean_bytes": 995011.4189189189
+      },
+      "P": {
+        "count": 4289,
+        "mean_bytes": 181509.80904639777
+      },
+      "B": {
+        "count": 0,
+        "mean_bytes": 0
+      }
+    }
+  },
+  "sdk": {
+    "bitrate": 80208243.30503844,
+    "second_min": 72911936.0,
+    "second_max": 96970088.0,
+    "second_mean": 80217858.1081081,
+    "second_cv": 0.04628091548842018,
+    "types": {
+      "I": {
+        "count": 148,
+        "mean_bytes": 1545615.5675675676
+      },
+      "P": {
+        "count": 4289,
+        "mean_bytes": 292744.61273024016
+      },
+      "B": {
+        "count": 0,
+        "mean_bytes": 0
+      }
+    }
+  },
+  "correlation": 0.016368898487601004
+}

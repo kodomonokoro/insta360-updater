@@ -1,0 +1,18 @@
+{
+  "source": {
+    "nas_video_folder": ".",
+    "raw_folder": null,
+    "mp3_folder": null
+  },
+  "youtube": {
+    "client_secret_path": ".",
+    "token_path": "."
+  },
+  "youtube_defaults": {
+    "title_prefix": "",
+    "privacy_status": "unlisted",
+    "made_for_kids": false,
+    "playlist_id": null
+  },
+  "retention_days": 14
+}

@@ -1,0 +1,59 @@
+{
+  "frame_count": 884,
+  "types": {
+    "I": {
+      "count": 30,
+      "mean_bytes": 1445848.7
+    },
+    "P": {
+      "count": 854,
+      "mean_bytes": 627493.3079625292
+    }
+  },
+  "keyframe_indices": [
+    0,
+    30,
+    60,
+    90,
+    120,
+    150,
+    180,
+    210,
+    240,
+    270,
+    300,
+    330,
+    360,
+    390,
+    420,
+    450,
+    480,
+    510,
+    540,
+    570,
+    600,
+    630,
+    660,
+    690,
+    720,
+    750,
+    780,
+    810,
+    840,
+    870
+  ],
+  "gop_lengths": {
+    "30": 29
+  },
+  "i_intervals": {
+    "30": 29
+  },
+  "full_second_bitrate": {
+    "min": 102827376,
+    "max": 184615600,
+    "mean": 157634472.27586207,
+    "cv": 0.09461268780659214,
+    "mean_absolute_step_fraction": 0.08061785934770857
+  },
+  "note": "1-second bins use presentation timestamps; final partial second excluded from statistics."
+}

@@ -1,0 +1,59 @@
+{
+  "sdk\\MediaSDK\\bin\\MediaSDKTest.exe": {
+    "size": 175616,
+    "sha256": "9bed43509efa2f099b8a89d56312694e5628ed6025129aa5f8a0be9b0ccbdd41"
+  },
+  "sdk\\MediaSDK\\bin\\MediaSDK.dll": {
+    "size": 148162560,
+    "sha256": "f3f73aaa333cf0efa9780332e661bf50697811ebd8d79b266eba3f8c8cf1d164"
+  },
+  "sdk\\MediaSDK\\example\\main.cc": {
+    "size": 43750,
+    "sha256": "bfa842fed14bdac94e80c8ee0e5f1415e979d3df42778c8f787da03ed0953d17"
+  },
+  "sdk\\MediaSDK\\include\\stitcher\\ins_stitcher.h": {
+    "size": 15953,
+    "sha256": "0749362f705c214f0b5b889ea1a6a070c23fa26ae8c3f164d095581ed13a657c"
+  },
+  "parsed_cli_options": [
+    "--debug",
+    "--log_file",
+    "--log_level",
+    "-bitrate",
+    "-blackpoint",
+    "-brightness",
+    "-camera_accessory_type",
+    "-contrast",
+    "-definition",
+    "-disable_cuda",
+    "-enable_10bit",
+    "-enable_colorplus",
+    "-enable_coolingshell",
+    "-enable_deflicker",
+    "-enable_defringe",
+    "-enable_denoise",
+    "-enable_directionlock",
+    "-enable_flowstate",
+    "-enable_h265_encoder",
+    "-enable_soft_decode",
+    "-enable_soft_encode",
+    "-enable_stitchfusion",
+    "-export_frame_index",
+    "-exposure",
+    "-help",
+    "-highlights",
+    "-image_processing_accel",
+    "-image_sequence_dir",
+    "-image_type",
+    "-inputs",
+    "-model_root_dir",
+    "-output",
+    "-output_size",
+    "-saturation",
+    "-shadows",
+    "-stitch_type",
+    "-tint",
+    "-vibrance",
+    "-warmth"
+  ]
+}

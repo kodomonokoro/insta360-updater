@@ -1,0 +1,76 @@
+{
+  "checks": [
+    {
+      "label": "sdk_6k_50_ai_denoise_fusion_013",
+      "frames": 4527,
+      "bitrate_error_bps": 0.34497443586587906
+    },
+    {
+      "label": "sdk_6k_50_ai_fusion_013",
+      "frames": 4527,
+      "bitrate_error_bps": 0.06407773494720459
+    },
+    {
+      "label": "sdk_6k_80_ai_denoise_fusion_013",
+      "frames": 4527,
+      "bitrate_error_bps": 0.7139288783073425
+    },
+    {
+      "label": "sdk_8k_142_baseline",
+      "frames": 884,
+      "bitrate_error_bps": 2.039310872554779
+    },
+    {
+      "label": "sdk_8k_154_aistitch",
+      "frames": 884,
+      "bitrate_error_bps": 2.1828769743442535
+    },
+    {
+      "label": "sdk_8k_154_ai_denoise_fusion",
+      "frames": 884,
+      "bitrate_error_bps": 2.3891913890838623
+    },
+    {
+      "label": "sdk_8k_154_ai_denoise",
+      "frames": 884,
+      "bitrate_error_bps": 2.3680261969566345
+    },
+    {
+      "label": "sdk_8k_154_denoise",
+      "frames": 884,
+      "bitrate_error_bps": 2.424331158399582
+    },
+    {
+      "label": "sdk_8k_154_dynamic",
+      "frames": 884,
+      "bitrate_error_bps": 2.09582981467247
+    },
+    {
+      "label": "sdk_8k_154_flowstate",
+      "frames": 884,
+      "bitrate_error_bps": 1.9273970425128937
+    },
+    {
+      "label": "sdk_8k_154_fusion",
+      "frames": 884,
+      "bitrate_error_bps": 2.1599111557006836
+    },
+    {
+      "label": "sdk_8k_154_no_flowstate",
+      "frames": 884,
+      "bitrate_error_bps": 2.7611635625362396
+    },
+    {
+      "label": "studio_6k",
+      "frames": 58377,
+      "bitrate_error_bps": 0.25093088299036026
+    },
+    {
+      "label": "studio_8k",
+      "frames": 705,
+      "bitrate_error_bps": 0.7463175356388092
+    }
+  ],
+  "original_sizes_unchanged": true,
+  "note": "Size checks do not substitute for before/after content hashes. No source mutation commands were used."
+}

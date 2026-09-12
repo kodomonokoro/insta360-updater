@@ -132,6 +132,7 @@ def upload_file(
     subfolder: str | None = None,
     progress_callback: Callable[[float], None] | None = None,
     log: Callable[[str], None] | None = None,
+    on_skip: Callable[[], None] | None = None,
 ) -> str:
     creds = _load_credentials(config)
     drive = build("drive", "v3", credentials=creds)
@@ -150,6 +151,8 @@ def upload_file(
     # the video's title is what matters.)
     existing_id = _find_existing_file(drive, parent_id, file_name)
     if existing_id is not None:
+        if on_skip:
+            on_skip()
         if log:
             log(f"'{file_name}' already exists on Google Drive, reusing it (skipped upload)")
         return existing_id
@@ -169,7 +172,11 @@ def upload_file(
 
     response = None
     while response is None:
-        status, response = request.next_chunk()
+        # num_retries: the client library's own exponential-backoff retry
+        # for transient errors (5xx, connection resets, etc.) on each
+        # chunk — without it, a single transient error (seen in practice:
+        # a Google-side 502) aborts the whole upload immediately.
+        status, response = request.next_chunk(num_retries=5)
         if status and progress_callback:
             progress_callback(status.progress())
 
