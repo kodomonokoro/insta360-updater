@@ -49,9 +49,20 @@ def run_camera_pipeline(
 ):
     """Run each stage across the selected clips, completely serially.
 
-    `skip_audio_drive` is the "①②⑤のみ実施" mode: skip audio extraction/
-    Drive upload for this run regardless of whether Drive is configured
-    (distinct from Drive simply not being set up at all).
+    `stop_after_stitch` and `skip_audio_drive` are this function's own
+    named presets (this module's whole reason to exist is sequencing a
+    *camera*-sourced run specifically) — translated below into
+    lifecycle.enabled_stages()'s more general include_audio_drive/
+    include_youtube split, the same one config.validate_for_run() and
+    every other caller of enabled_stages() shares:
+
+    - `stop_after_stitch` ("①②のみ実施" / "デバッグ：動画取り込み"): stop
+      after copy+stitch, before anything else — excludes both audio/drive
+      and youtube.
+    - `skip_audio_drive` ("YouTube出力"): skip audio extraction/Drive
+      upload for this run regardless of whether Drive is configured
+      (distinct from Drive simply not being set up at all) — youtube
+      still runs.
 
     `should_cancel` is checked between clips/stages, not during one — see
     serial_pipeline.execute()'s docstring comment for why a stop request
@@ -61,8 +72,10 @@ def run_camera_pipeline(
     anything — every caller (CLI's `intake`, the GUI's camera worker) goes
     through this one entry point, so there's only one place this check
     needs to live."""
+    include_audio_drive = not stop_after_stitch and not skip_audio_drive
+    include_youtube = not stop_after_stitch
     error = validate_for_run(
-        config, camera=True, stop_after_stitch=stop_after_stitch, skip_audio_drive=skip_audio_drive
+        config, camera=True, include_audio_drive=include_audio_drive, include_youtube=include_youtube
     )
     if error:
         raise ConfigError(error)
@@ -71,6 +84,6 @@ def run_camera_pipeline(
         videos, config, store, log,
         {"copy": copy_raw, "stitch": stitch, "audio": extract_audio,
          "drive": upload_audio_to_drive, "youtube": upload_to_youtube},
-        camera=True, stop_after_stitch=stop_after_stitch, skip_audio_drive=skip_audio_drive,
+        camera=True, include_audio_drive=include_audio_drive, include_youtube=include_youtube,
         on_progress=on_progress, on_state=on_state, on_camera_safe=on_camera_safe, should_cancel=should_cancel,
     )

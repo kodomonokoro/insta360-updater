@@ -6,10 +6,10 @@ from .title_builder import title_for_video
 
 
 def execute(videos, config, store, log, operations, *, camera=False,
-            stop_after_stitch=False, skip_audio_drive=False, on_state=None, on_progress=None,
+            include_audio_drive=True, include_youtube=True, on_state=None, on_progress=None,
             on_camera_safe=None, should_cancel=None):
-    stages = enabled_stages(camera=camera, drive=config.drive is not None,
-                             stop_after_stitch=stop_after_stitch, skip_audio_drive=skip_audio_drive)
+    stages = enabled_stages(camera=camera, drive=config.drive_active,
+                             include_audio_drive=include_audio_drive, include_youtube=include_youtube)
     run = SerialRun([v.key for v in videos], stages, on_state, on_progress)
     for video in videos:
         try:

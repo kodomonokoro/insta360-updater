@@ -36,6 +36,11 @@ class DriveConfig:
     token_path: Path
     folder_id: str | None
     subfolder_prefix: str | None
+    # Distinct from "is this None" — the Settings screen's "GoogleドライブにMP3
+    # ファイルを格納する" toggle sets this without clearing the fields above,
+    # so switching it off and saving no longer discards a previously-entered
+    # secret/token/folder — see settings_model.py's save()/_load_from().
+    enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -66,9 +71,19 @@ class AppConfig:
     raw_folder: Path | None = None
     mp3_folder: Path | None = None
 
+    @property
+    def drive_active(self) -> bool:
+        """Whether Drive should actually be used for a run — distinct from
+        `drive is not None`, which (since DriveConfig.enabled exists) can
+        now be true even while the Settings screen's toggle is off, so a
+        previously-entered secret/token/folder survives being switched off
+        and saved. Every caller that used to gate on `drive is not None` to
+        mean "should this run touch Drive" should use this instead."""
+        return self.drive is not None and self.drive.enabled
+
 
 def validate_for_run(
-    config: AppConfig, *, camera: bool, stop_after_stitch: bool = False, skip_audio_drive: bool = False
+    config: AppConfig, *, camera: bool, include_audio_drive: bool = True, include_youtube: bool = True
 ) -> str | None:
     """Checked once, at 開始-press time (GUI) or at the top of
     run_camera_pipeline()/process_videos() (CLI and any other caller) —
@@ -76,18 +91,17 @@ def validate_for_run(
     separate re-validation trigger. Returns a user-facing error message if
     this specific run mode is missing something it needs, else None.
 
-    Mirrors lifecycle.enabled_stages()'s own conditions exactly, stage by
-    stage, so a setting is only required when the mode being run would
-    actually reach the stage that needs it:
+    Mirrors lifecycle.enabled_stages()'s own condition for each stage
+    group exactly — same include_audio_drive/include_youtube split, so a
+    setting is only required when the mode being run would actually reach
+    the stage that needs it:
 
     - 映像(nas_video_folder): always required.
     - raw_folder / Insta360 SDK (MediaSDKTest.exe): only when `camera` (①
       copy, ② stitch are part of this run).
-    - mp3_folder / Google Drive (config + auth token): only when this mode
-      wants audio extraction + Drive upload (`needs_audio_drive` below —
-      same condition as enabled_stages()'s own audio/drive gate).
-    - YouTube auth token: whenever this mode reaches ⑤ YouTube upload,
-      i.e. every mode except "①②のみ実施" (camera + stop_after_stitch).
+    - mp3_folder / Google Drive (config + auth token): only when
+      `include_audio_drive`.
+    - YouTube auth token: only when `include_youtube`.
     """
     if not str(config.nas_video_folder):
         return "映像抽出先(MP4)フォルダが設定されていません。設定画面で指定してください。"
@@ -101,21 +115,19 @@ def validate_for_run(
                 "ファイルが見つかりません。設定画面で指定してください。"
             )
 
-    needs_audio_drive = not skip_audio_drive and not (camera and stop_after_stitch)
-    if needs_audio_drive:
+    if include_audio_drive:
         if config.mp3_folder is None:
             return "音声抽出先(MP3)フォルダが設定されていません。設定画面で指定してください。"
-        if config.drive is None:
+        if not config.drive_active:
             return (
                 "この実行モードには音声抽出・Google Driveアップロードが含まれますが、"
-                "Google Driveが設定されていません。設定画面で設定するか、"
-                "実行モードを「①②⑤のみ実施」に変更してください。"
+                "Google Driveが有効になっていません。設定画面で有効にするか、"
+                "実行モードを「YouTube出力」に変更してください。"
             )
         if not config.drive.token_path.is_file():
             return "Google Driveの認証が完了していません。設定画面で認証してください。"
 
-    needs_youtube = not (camera and stop_after_stitch)
-    if needs_youtube and not config.youtube.token_path.is_file():
+    if include_youtube and not config.youtube.token_path.is_file():
         return "YouTubeの認証が完了していません。設定画面で認証してください。"
 
     return None

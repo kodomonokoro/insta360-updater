@@ -112,17 +112,28 @@ SnapshotFn = Callable[[RunSnapshot], None]
 
 
 def enabled_stages(
-    *, camera: bool, drive: bool, stop_after_stitch: bool = False, skip_audio_drive: bool = False
+    *, camera: bool, drive: bool, include_audio_drive: bool = True, include_youtube: bool = True
 ) -> tuple[str, ...]:
-    """`skip_audio_drive` deliberately skips audio/drive regardless of
-    whether Drive is actually configured — the "①②⑤のみ実施" mode, for a
-    run where audio backup just isn't wanted this time, distinct from
-    Drive never being configured at all (which also skips these stages,
-    but is otherwise required for any mode that does want them — see
-    config.validate_for_run)."""
-    stages = ("copy", "stitch") if camera else ()
-    if not (camera and stop_after_stitch):
-        stages += (("audio", "drive") if (drive and not skip_audio_drive) else ()) + ("youtube",)
+    """The 3 stage *groups* — {copy, stitch}, {audio, drive}, {youtube} —
+    are each independently includable, gated by whether they're
+    structurally possible at all (camera/drive) AND whether this run
+    actually wants them (include_audio_drive/include_youtube). No group
+    depends on another group's own inclusion: wanting {youtube} alone
+    (e.g. re-running just the upload against an already-stitched,
+    already-audio-extracted clip) or {audio, drive} alone are both valid
+    on their own terms, same as wanting all three or just {copy, stitch}.
+
+    `include_audio_drive` deliberately skips audio/drive regardless of
+    whether Drive is actually configured — a run where audio backup just
+    isn't wanted this time, distinct from Drive never being configured at
+    all (which also skips these stages, but is otherwise required for any
+    mode that does want them — see config.validate_for_run, which mirrors
+    this same include_audio_drive/include_youtube split)."""
+    stages: tuple[str, ...] = ("copy", "stitch") if camera else ()
+    if drive and include_audio_drive:
+        stages += ("audio", "drive")
+    if include_youtube:
+        stages += ("youtube",)
     return stages
 
 

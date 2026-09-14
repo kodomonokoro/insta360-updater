@@ -72,13 +72,18 @@ Item {
         bottomInset: 0
         leftInset: 0
         rightInset: 0
+        // enabled gated first — same rule as Main.qml's FlatToolButton/
+        // SquareDialogButton/start-stop buttons: a disabled button must
+        // never visibly react to hover, since Control.hovered keeps
+        // tracking the pointer regardless of enabled.
         background: Rectangle {
             implicitHeight: settingsRoot.controlHeight
             radius: 4
-            color: parent.down ? "#d8dbe2" : (parent.hovered ? "#eef0f4" : "#e4e7ed")
+            color: !parent.enabled ? "#e4e7ed" : (parent.down ? "#d8dbe2" : (parent.hovered ? "#eef0f4" : "#e4e7ed"))
         }
     }
     component CompactComboBox: ComboBox {
+        id: control
         implicitHeight: settingsRoot.controlHeight
         topInset: 0
         bottomInset: 0
@@ -90,6 +95,82 @@ Item {
             color: "#ffffff"
             border.color: settingsRoot.border
             border.width: 1
+        }
+        // Same root cause as the popup's own lopsided padding below:
+        // Material's default contentItem/indicator size themselves off
+        // Material's own assumed control height, not this control's
+        // overridden implicitHeight, so the label/arrow sat visibly
+        // off-center within it.
+        contentItem: Label {
+            text: control.displayText
+            color: settingsRoot.text
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: 12
+            rightPadding: 30
+            elide: Text.ElideRight
+        }
+        indicator: TablerIcon {
+            x: control.width - width - 10
+            anchors.verticalCenter: parent.verticalCenter
+            name: "chevron-down"
+            iconColor: settingsRoot.textDim
+            size: 16
+        }
+        // Material's own default popup delegate is sized for a touch
+        // target (tall rows, generous padding) — every other control in
+        // this app is deliberately dense, so the dropdown looked oversized
+        // next to it. Rows match the closed control's own controlHeight.
+        delegate: ItemDelegate {
+            width: control.width
+            implicitHeight: settingsRoot.controlHeight
+            highlighted: control.highlightedIndex === index
+            contentItem: Label {
+                // Plain-string models (公開範囲) have no textRole set, so
+                // modelData itself is the text; object models (デバッグモード's
+                // debugModeOptions) need textRole to pick which field.
+                text: control.textRole ? modelData[control.textRole] : modelData
+                color: settingsRoot.text
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: 12
+            }
+            background: Rectangle {
+                color: highlighted ? settingsRoot.panelAlt : "transparent"
+            }
+        }
+        // Overriding just popup.topPadding/bottomPadding left a lopsided
+        // gap under the last row — Material's own Popup reserves extra
+        // bottom space for its drop-shadow elevation regardless, not
+        // counted as plain padding. Owning the popup outright sizes it to
+        // exactly the list's real content height, no hidden margin either
+        // side.
+        popup: Popup {
+            // Opens upward instead when there isn't room below — this
+            // ComboBox can sit right at the bottom of the scroll area
+            // (the デバッグモード section is the last thing on the page),
+            // where opening downward as usual would render the popup
+            // partly or fully below the window and make it unreachable.
+            y: {
+                var win = control.Window.window
+                if (!win) return control.height + 2
+                var belowY = control.mapToItem(win.contentItem, 0, control.height).y
+                return (belowY + implicitHeight > win.height) ? -implicitHeight - 2 : control.height + 2
+            }
+            width: control.width
+            implicitHeight: comboList.contentHeight
+            padding: 0
+            background: Rectangle {
+                radius: 4
+                color: "#ffffff"
+                border.color: settingsRoot.border
+                border.width: 1
+            }
+            contentItem: ListView {
+                id: comboList
+                clip: true
+                implicitHeight: contentHeight
+                model: control.popup.visible ? control.delegateModel : null
+                currentIndex: control.highlightedIndex
+            }
         }
     }
 
@@ -124,7 +205,7 @@ Item {
                         onClicked: rawFolderDialog.open()
                     }
                     CompactButton {
-                        text: "フォルダ内をクリア"
+                        text: "フォルダ内を削除"
                         onClicked: settingsBackend.checkClearFolder("raw")
                     }
                 }
@@ -144,7 +225,7 @@ Item {
                         onClicked: nasFolderDialog.open()
                     }
                     CompactButton {
-                        text: "フォルダ内をクリア"
+                        text: "フォルダ内を削除"
                         onClicked: settingsBackend.checkClearFolder("mp4")
                     }
                 }
@@ -166,12 +247,12 @@ Item {
                         onClicked: mp3FolderDialog.open()
                     }
                     CompactButton {
-                        text: "フォルダ内をクリア"
+                        text: "フォルダ内を削除"
                         onClicked: settingsBackend.checkClearFolder("mp3")
                     }
                 }
 
-                Label { text: "ファイル保持日数(完了後この日数を過ぎたら次回起動時に削除)"; color: settingsRoot.textDim; font.pixelSize: 12 }
+                Label { text: "ファイル保持日数(完了後この日数を過ぎたら次回起動時に削除の確認が表示されます)"; color: settingsRoot.textDim; font.pixelSize: 12 }
                 CompactTextField {
                     Layout.preferredWidth: 100
                     text: String(settingsBackend.retentionDays)
@@ -187,7 +268,7 @@ Item {
                 spacing: 6
                 Label { text: "Insta360 SDK"; color: settingsRoot.text; font.bold: true; font.pixelSize: 14 }
 
-                Label { text: "MediaSDKTest.exe"; color: settingsRoot.textDim; font.pixelSize: 12 }
+                Label { text: "MediaSDKTest.exe — カメラ取り込み時のみ必須"; color: settingsRoot.textDim; font.pixelSize: 12 }
                 RowLayout {
                     Layout.fillWidth: true
                     CompactTextField {
@@ -198,7 +279,7 @@ Item {
                     CompactButton { text: "参照..."; onClicked: sdkExeDialog.open() }
                 }
 
-                Label { text: "モデルフォルダ"; color: settingsRoot.textDim; font.pixelSize: 12 }
+                Label { text: "モデルフォルダ — カメラ取り込み時のみ必須"; color: settingsRoot.textDim; font.pixelSize: 12 }
                 RowLayout {
                     Layout.fillWidth: true
                     CompactTextField {
@@ -386,6 +467,98 @@ Item {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 CompactButton { text: "保存"; onClicked: settingsBackend.save() }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: settingsRoot.border }
+
+            // ---- デバッグモード (メイン画面のログ欄と同じく、既定で折りたたみ) ----
+            // Lives on `backend` (PipelineModel), not `settingsBackend` —
+            // it drives the main screen's mode label, not anything saved
+            // to settings.local.json. Deliberately session-only: every
+            // debug flag always starts false on a fresh launch, so a
+            // debug-only run mode can never linger silently selected.
+            ColumnLayout {
+                id: debugSection
+                Layout.fillWidth: true
+                spacing: 6
+                property bool expanded: false
+                // One dropdown, one explicit flag combination per entry
+                // (not "set one flag, leave the rest alone") — no way to
+                // land on a combination nothing here intends. "通常" is
+                // every flag false — the everyday mode, purely derived from
+                // the "GoogleドライブにMP3ファイルを格納する" toggle above
+                // (see Main.qml's currentModeLabel) rather than a fixed
+                // preset of its own.
+                readonly property var debugModeOptions: [
+                    { label: "通常",
+                      skipIntake: false, stopAfterStitch: false, skipAudioDrive: false, skipYoutube: false },
+                    { label: "デバッグ：動画取り込み ①②",
+                      skipIntake: false, stopAfterStitch: true, skipAudioDrive: false, skipYoutube: false },
+                    { label: "デバッグ：YouTube取り込み ⑤",
+                      skipIntake: true, stopAfterStitch: false, skipAudioDrive: true, skipYoutube: false },
+                    { label: "デバッグ：音声出力 ③④",
+                      skipIntake: true, stopAfterStitch: false, skipAudioDrive: false, skipYoutube: true },
+                ]
+
+                RowLayout {
+                    spacing: 4
+                    MouseArea {
+                        implicitWidth: debugHeaderRow.implicitWidth
+                        implicitHeight: debugHeaderRow.implicitHeight
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: debugSection.expanded = !debugSection.expanded
+                        RowLayout {
+                            id: debugHeaderRow
+                            spacing: 4
+                            TablerIcon {
+                                name: debugSection.expanded ? "chevron-down" : "chevron-right"
+                                iconColor: "#111827"
+                                size: 16
+                            }
+                            Label { text: "デバッグモード"; color: settingsRoot.text; font.bold: true; font.pixelSize: 14 }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: debugSection.expanded
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        text: "デバッグモード選択"
+                        color: settingsRoot.textDim
+                        font.pixelSize: 12
+                    }
+                    CompactComboBox {
+                        Layout.preferredWidth: 260
+                        model: debugSection.debugModeOptions
+                        textRole: "label"
+                        // Matched against backend's own flags (not tracked
+                        // locally) so this always reflects the true source
+                        // of truth even when it changes from elsewhere.
+                        // Always lands on a real entry — "通常" is every
+                        // flag false, same as the other 3 presets, so there
+                        // is no blank/unmatched state to fall back on.
+                        currentIndex: {
+                            const modes = debugSection.debugModeOptions
+                            for (let i = 0; i < modes.length; i++) {
+                                const m = modes[i]
+                                if (m.skipIntake === backend.skipIntake && m.stopAfterStitch === backend.stopAfterStitch
+                                    && m.skipAudioDrive === backend.skipAudioDrive && m.skipYoutube === backend.skipYoutube) {
+                                    return i
+                                }
+                            }
+                            return 0
+                        }
+                        onActivated: {
+                            const m = debugSection.debugModeOptions[currentIndex]
+                            backend.skipIntake = m.skipIntake
+                            backend.stopAfterStitch = m.stopAfterStitch
+                            backend.skipAudioDrive = m.skipAudioDrive
+                            backend.skipYoutube = m.skipYoutube
+                        }
+                    }
+                }
             }
 
             Item { Layout.preferredHeight: 20 }

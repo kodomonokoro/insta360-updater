@@ -100,6 +100,7 @@ def _app_config_to_dict(config: AppConfig) -> dict:
             "token_path": str(config.drive.token_path),
             "folder_id": config.drive.folder_id,
             "subfolder_prefix": config.drive.subfolder_prefix,
+            "enabled": config.drive.enabled,
         }
     if config.media_sdk is not None:
         raw["insta360_sdk"] = {
@@ -124,6 +125,10 @@ def _app_config_from_dict(raw: dict) -> AppConfig:
             token_path=Path(drive_raw.get("token_path") or ""),
             folder_id=drive_raw.get("folder_id") or None,
             subfolder_prefix=drive_raw.get("subfolder_prefix") or None,
+            # Missing key means a file saved before this field existed —
+            # back then a google_drive section was only ever written while
+            # enabled, so defaulting True there reproduces that behavior.
+            enabled=bool(drive_raw.get("enabled", True)),
         )
 
     media_sdk = None

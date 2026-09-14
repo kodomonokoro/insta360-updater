@@ -85,11 +85,21 @@ def _find_verified_clips(config: AppConfig, retention_days: int | None) -> list[
     return result
 
 
+def list_files(folder: Path) -> list[Path]:
+    """Every file (not directory) anywhere under folder, sorted — the same
+    set count_files() counts and clear_folder_contents() deletes, so the
+    confirmation prompt can show the actual filenames instead of just a
+    number."""
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.rglob("*") if p.is_file())
+
+
 def count_files(folder: Path) -> int:
-    """How many files (not directories) sit anywhere under folder — used
-    to show a real number in the confirmation prompt before
-    clear_folder_contents() runs."""
-    return sum(1 for p in folder.rglob("*") if p.is_file()) if folder.is_dir() else 0
+    """How many files sit anywhere under folder — used to show a real
+    number in the confirmation prompt before clear_folder_contents()
+    runs."""
+    return len(list_files(folder))
 
 
 def clear_folder_contents(folder: Path) -> int:

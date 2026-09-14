@@ -100,19 +100,29 @@ def run_pipeline(
 def process_videos(
     videos: list[VideoFile], config: AppConfig, store: ProcessedStore, log: Logger,
     on_progress: ProgressFn | None = None, *, on_state=None, should_cancel: Callable[[], bool] | None = None,
+    include_audio_drive: bool = True, include_youtube: bool = True,
 ):
     """Serial per-video execution with a separate lifecycle for every stage.
+
+    `include_audio_drive`/`include_youtube` back the debug-only "デバッグ：
+    YouTube取り込み"(youtube only) and "デバッグ：音声出力"(audio+drive
+    only) run modes — same split as lifecycle.enabled_stages()/
+    config.validate_for_run(); default True/True is the ordinary
+    "③④⑤のみ実施"-equivalent full run against already-stitched NAS mp4s.
 
     Validates the same way the GUI's start button does before touching
     anything — every caller (CLI's `run`, the GUI's skip-intake worker)
     goes through this one entry point, so there's only one place this
     check needs to live."""
-    error = validate_for_run(config, camera=False)
+    error = validate_for_run(
+        config, camera=False, include_audio_drive=include_audio_drive, include_youtube=include_youtube
+    )
     if error:
         raise ConfigError(error)
     from .serial_pipeline import execute
     return execute(videos, config, store, log,
                    {"audio": extract_audio, "drive": upload_audio_to_drive, "youtube": upload_to_youtube},
+                   include_audio_drive=include_audio_drive, include_youtube=include_youtube,
                    on_progress=on_progress, on_state=on_state, should_cancel=should_cancel)
 
 

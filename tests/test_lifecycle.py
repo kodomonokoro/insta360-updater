@@ -128,36 +128,47 @@ def test_existing_artifacts_are_successes_but_cancelled_work_is_not():
 
 
 def test_enabled_stages_skip_audio_drive_keeps_youtube():
-    # "①②⑤のみ実施" — skips audio/drive even though Drive IS configured,
+    # "YouTube出力" — skips audio/drive even though Drive IS configured,
     # unlike drive=False (Drive simply not set up) which does the same
     # thing for a different reason.
-    assert enabled_stages(camera=True, drive=True, skip_audio_drive=True) == ("copy", "stitch", "youtube")
+    assert enabled_stages(camera=True, drive=True, include_audio_drive=False) == ("copy", "stitch", "youtube")
 
 
 def test_enabled_stages_skip_audio_drive_with_stop_after_stitch_is_still_copy_stitch_only():
     assert enabled_stages(
-        camera=True, drive=True, stop_after_stitch=True, skip_audio_drive=True
+        camera=True, drive=True, include_audio_drive=False, include_youtube=False
     ) == ("copy", "stitch")
+
+
+def test_enabled_stages_youtube_only_without_camera():
+    # "デバッグ：YouTube取り込み" — audio/drive skipped, no camera source,
+    # just the upload stage in isolation.
+    assert enabled_stages(camera=False, drive=True, include_audio_drive=False) == ("youtube",)
+
+
+def test_enabled_stages_audio_drive_only_without_camera_or_youtube():
+    # "デバッグ：音声出力" — the reverse: audio/drive alone, no upload.
+    assert enabled_stages(camera=False, drive=True, include_youtube=False) == ("audio", "drive")
 
 
 @pytest.mark.parametrize("camera,drive,stop", [(True, True, False), (True, False, False),
                                                (True, True, True), (False, True, False)])
 def test_pipeline_order_and_every_boundary(config, videos, monkeypatch, camera, drive, stop):
-    # (camera=False, drive=False) isn't a reachable real configuration —
-    # process_videos() (the NAS-only path) has no skip_audio_drive knob,
-    # so validate_for_run() always requires Drive there; only the camera
-    # path can legitimately skip audio/drive (①②⑤のみ実施), which is what
-    # the (True, False, False) case below exercises.
+    # (camera=False, drive=False) isn't exercised here with include_audio_
+    # drive=True (this test always passes process_videos() its default
+    # True/True) — only the camera path exercises skipping audio/drive on
+    # purpose (the (True, False, False) case below, "YouTube出力").
     if not drive:
         config = replace(config, drive=None)
     # Real callers reach "no audio/drive stages" either by configuring
     # Drive and explicitly asking to skip it (skip_audio_drive) or by
     # simply never configuring Drive at all — validate_for_run() only
-    # requires Drive when skip_audio_drive is False, so the drive=False
-    # case here needs skip_audio_drive=True to still pass validation.
+    # requires Drive when include_audio_drive is True, so the drive=False
+    # case here needs skip_audio_drive=True (run_camera_pipeline's own
+    # preset flag) to still pass validation.
     skip_audio_drive = not drive
     snapshots, calls, camera_safe = [], [], []
-    stages = enabled_stages(camera=camera, drive=drive, stop_after_stitch=stop)
+    stages = enabled_stages(camera=camera, drive=drive, include_audio_drive=not stop, include_youtube=not stop)
     def operation(stage):
         def perform(video, *args, on_skip=None):
             progress = args[-1]
@@ -325,9 +336,11 @@ def test_background_worker_delivers_lifecycle_snapshot_to_gui_thread(config, vid
     snapshot = SerialRun([row.key], ("youtube",)).snapshot()
     received, finished = [], []
 
-    def fake_process(items, worker_config, store, log, on_state, should_cancel):
+    def fake_process(items, worker_config, store, log, on_state, should_cancel,
+                      include_audio_drive, include_youtube):
         assert items == [videos[0]]
         assert should_cancel() is False
+        assert include_audio_drive is True and include_youtube is True
         on_state(snapshot)
         log("worker ran")
         return snapshot
@@ -379,3 +392,5 @@ def test_stages_the_current_run_mode_wont_touch_show_excluded_before_any_run(con
     assert model.get_stage_run_states() == ["pending"] * 5
     model._stop_after_stitch = True
     assert model.get_stage_run_states() == ["pending", "pending", "excluded", "excluded", "excluded"]
+
+

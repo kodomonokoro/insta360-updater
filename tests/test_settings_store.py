@@ -151,6 +151,33 @@ def test_save_then_load_round_trips_with_drive(tmp_path):
     assert reloaded.drive.subfolder_prefix == "practice"
 
 
+def test_save_then_load_round_trips_disabled_drive_without_losing_fields(tmp_path):
+    # Regression: DriveConfig.enabled=False must not make save/load treat
+    # the whole section as absent — the Settings screen's "GoogleドライブにMP3
+    # ファイルを格納する" toggle going off must not discard a previously-
+    # entered secret/token/folder on the next save.
+    settings_path = tmp_path / "settings.json"
+    config = load_app_config(settings_path=settings_path)
+    with_disabled_drive = replace(
+        config,
+        drive=DriveConfig(
+            client_secret_path=config.youtube.client_secret_path,
+            token_path=config.youtube.token_path,
+            folder_id="folder-123",
+            subfolder_prefix="practice",
+            enabled=False,
+        ),
+    )
+    save_app_config(with_disabled_drive, settings_path)
+
+    reloaded = load_app_config(settings_path=settings_path)
+    assert reloaded.drive is not None
+    assert reloaded.drive.enabled is False
+    assert reloaded.drive.folder_id == "folder-123"
+    assert reloaded.drive.subfolder_prefix == "practice"
+    assert reloaded.drive_active is False
+
+
 def test_save_then_load_round_trips_raw_and_mp3_folder(tmp_path):
     settings_path = tmp_path / "settings.json"
     config = load_app_config(settings_path=settings_path)

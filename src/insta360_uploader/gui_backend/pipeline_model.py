@@ -172,11 +172,16 @@ class ProcessVideosWorker(QThread):
     stateChanged = Signal(object)
     finished_ = Signal()
 
-    def __init__(self, rows: list[FileRow], config: AppConfig, store: ProcessedStore):
+    def __init__(
+        self, rows: list[FileRow], config: AppConfig, store: ProcessedStore,
+        include_audio_drive: bool = True, include_youtube: bool = True,
+    ):
         super().__init__()
         self.rows = rows
         self.config = config
         self.store = store
+        self.include_audio_drive = include_audio_drive
+        self.include_youtube = include_youtube
         # Cooperative: checked between clips/stages only, not during one
         # already in flight — see serial_pipeline.execute()'s docstring.
         self.cancel_requested = False
@@ -194,6 +199,8 @@ class ProcessVideosWorker(QThread):
                 log=lambda msg: self.logLine.emit(msg),
                 on_state=self.stateChanged.emit,
                 should_cancel=lambda: self.cancel_requested,
+                include_audio_drive=self.include_audio_drive,
+                include_youtube=self.include_youtube,
             )
         except Exception as exc:
             for row in self.rows:
@@ -207,6 +214,8 @@ class ProcessVideosWorker(QThread):
 
 class PipelineModel(QObject):
     rowsChanged = Signal()
+    sourceMissingMessageChanged = Signal()
+    driveActiveChanged = Signal()
     stageChanged = Signal()
     progressChanged = Signal()
     logChanged = Signal()
@@ -216,6 +225,7 @@ class PipelineModel(QObject):
     skipIntakeChanged = Signal()
     stopAfterStitchChanged = Signal()
     skipAudioDriveChanged = Signal()
+    skipYoutubeChanged = Signal()
     batchFinished = Signal(str)
     startBlocked = Signal(str)  # validation error — 開始 was refused
 
@@ -228,6 +238,7 @@ class PipelineModel(QObject):
         self._skip_intake = False
         self._stop_after_stitch = False
         self._skip_audio_drive = False
+        self._skip_youtube = False
         self._completed_ops = 0
         self._total_ops = 0
         self._current_file_fraction = 0.0
@@ -241,6 +252,7 @@ class PipelineModel(QObject):
         self._check_generation = 0
         self._check_worker = None
         self._check_pending = False
+        self._source_missing_message = ""
         self.refresh()
 
     @Slot(object)
@@ -255,6 +267,7 @@ class PipelineModel(QObject):
         save mid-run just waits — it isn't lost, it takes effect (via
         this same self.config) the next time refresh() actually runs."""
         self.config = config
+        self.driveActiveChanged.emit()
         self.refresh()
 
     # ---- scanning ----
@@ -264,12 +277,14 @@ class PipelineModel(QObject):
             return
         self._clear_run_display()
         new_rows: list[FileRow] = []
+        missing_message = ""
         if self._skip_intake:
             try:
                 videos = scan_video_folder(self.config.nas_video_folder)
             except FileNotFoundError as exc:
                 self._log(str(exc))
                 videos = []
+                missing_message = "フォルダが見つかりません"
             for video in videos:
                 seconds = probe_duration_seconds(video.path)
                 duration = format_duration(seconds) if seconds is not None else "—"
@@ -284,12 +299,14 @@ class PipelineModel(QObject):
             if drive is None:
                 self._log("Insta360カメラが見つかりません(USB接続を確認してください)")
                 videos = []
+                missing_message = "フォルダが見つかりません"
             else:
                 try:
                     videos = scan_camera_folder(drive)
                 except FileNotFoundError as exc:
                     self._log(str(exc))
                     videos = []
+                    missing_message = "フォルダが見つかりません"
             for video in videos:
                 chapter_paths = video.chapter_paths or (video.path,)
                 total_seconds = 0.0
@@ -323,6 +340,8 @@ class PipelineModel(QObject):
                 new_rows.append(row)
 
         self.rows = new_rows
+        self._source_missing_message = missing_message
+        self.sourceMissingMessageChanged.emit()
         self.rowsChanged.emit()
         self.selectionChanged.emit()
         self._request_artifact_check()
@@ -370,6 +389,20 @@ class PipelineModel(QObject):
         self._check_worker = None
         self._launch_artifact_check()
 
+    def _stage_group_inclusion(self) -> tuple[bool, bool]:
+        """(include_audio_drive, include_youtube) for the *currently
+        selected* run mode — the one place `_stop_after_stitch`/
+        `_skip_audio_drive`/`_skip_youtube` (this model's own UI-facing
+        preset flags) get translated into lifecycle.enabled_stages()'s
+        more general include_audio_drive/include_youtube split. Both
+        `_excluded_stage_keys()` (display) and `start()` (the real run)
+        call this so the two can never disagree about what a given
+        combination of flags actually means."""
+        return (
+            not self._stop_after_stitch and not self._skip_audio_drive,
+            not self._stop_after_stitch and not self._skip_youtube,
+        )
+
     def _excluded_stage_keys(self) -> frozenset[str]:
         """Stages the *currently selected run mode* won't touch — shown as
         a dash in the table even though the row itself hasn't started
@@ -377,11 +410,12 @@ class PipelineModel(QObject):
         different mode). Independent of `stage_status`/`run_states`,
         which answer "does the artifact exist" / "what happened this
         run" — this answers "would this mode even attempt it"."""
+        include_audio_drive, include_youtube = self._stage_group_inclusion()
         included = enabled_stages(
             camera=not self._skip_intake,
-            drive=self.config.drive is not None,
-            stop_after_stitch=self._stop_after_stitch,
-            skip_audio_drive=self._skip_audio_drive,
+            drive=self.config.drive_active,
+            include_audio_drive=include_audio_drive,
+            include_youtube=include_youtube,
         )
         return frozenset(STAGE_KEYS) - frozenset(included)
 
@@ -391,6 +425,21 @@ class PipelineModel(QObject):
         return [r.to_qml(excluded) for r in self.rows]
 
     rowsData = Property("QVariantList", get_rows, notify=rowsChanged)
+
+    def get_source_missing_message(self):
+        return self._source_missing_message
+
+    sourceMissingMessage = Property(str, get_source_missing_message, notify=sourceMissingMessageChanged)
+
+    def get_drive_active(self):
+        return self.config.drive_active
+
+    # Whether Drive is configured *and* enabled right now — drives the
+    # main screen's mode label when no debug-only mode is selected (see
+    # Main.qml's currentModeLabel): "YouTube・音声出力" if this is true,
+    # "YouTube出力" otherwise. No separate flag needed for that choice any
+    # more since AppConfig.drive_active already carries it.
+    driveActive = Property(bool, get_drive_active, notify=driveActiveChanged)
 
     @Slot(int, bool)
     def toggle_row_selected(self, index: int, value: bool):
@@ -529,6 +578,19 @@ class PipelineModel(QObject):
 
     skipAudioDrive = Property(bool, get_skip_audio_drive, set_skip_audio_drive, notify=skipAudioDriveChanged)
 
+    def get_skip_youtube(self):
+        return self._skip_youtube
+
+    def set_skip_youtube(self, value: bool):
+        if self._running:
+            return
+        if value != self._skip_youtube:
+            self._skip_youtube = value
+            self._clear_run_display()
+            self.skipYoutubeChanged.emit()
+
+    skipYoutube = Property(bool, get_skip_youtube, set_skip_youtube, notify=skipYoutubeChanged)
+
     def get_running(self):
         return self._running
 
@@ -594,11 +656,12 @@ class PipelineModel(QObject):
             self._log("選択なし: 処理対象の動画を選んでください")
             return
 
+        include_audio_drive, include_youtube = self._stage_group_inclusion()
         error = validate_for_run(
             self.config,
             camera=not self._skip_intake,
-            stop_after_stitch=self._stop_after_stitch,
-            skip_audio_drive=self._skip_audio_drive,
+            include_audio_drive=include_audio_drive,
+            include_youtube=include_youtube,
         )
         if error:
             self.startBlocked.emit(error)
@@ -613,13 +676,16 @@ class PipelineModel(QObject):
         self._check_pending = False
         self._running = True
         self.runningChanged.emit()
-        stages = enabled_stages(camera=not self._skip_intake, drive=self.config.drive is not None,
-                                stop_after_stitch=self._stop_after_stitch,
-                                skip_audio_drive=self._skip_audio_drive)
+        stages = enabled_stages(camera=not self._skip_intake, drive=self.config.drive_active,
+                                include_audio_drive=include_audio_drive,
+                                include_youtube=include_youtube)
         initial = SerialRun([row.key for row in selected], stages).snapshot()
         self._on_run_state(initial)
         if self._skip_intake:
-            worker = ProcessVideosWorker(selected, self.config, self.store)
+            worker = ProcessVideosWorker(
+                selected, self.config, self.store,
+                include_audio_drive=include_audio_drive, include_youtube=include_youtube,
+            )
         else:
             worker = CameraPipelineWorker(
                 selected, self.config, self.store, self._stop_after_stitch, self._skip_audio_drive

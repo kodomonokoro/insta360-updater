@@ -64,6 +64,21 @@ ApplicationWindow {
     // narrower than an actual badge would need.
     readonly property int stageColMinWidth: 62
     readonly property var colHeaders: ["コピー", "変換", "音声抽出", "Drive\nアップロード", "YouTube\nアップロード"]
+    // The run mode is no longer picked here — it's either derived from
+    // Settings' "GoogleドライブにMP3ファイルを格納する" toggle (the two
+    // everyday cases) or one of 3 single/paired-stage isolation presets
+    // chosen from the デバッグモード dropdown on the Settings screen itself
+    // (see SettingsScreen.qml's debugModeOptions, "通常" plus the 3 below
+    // it). This just displays whichever is currently in effect — matched
+    // against the exact same 3 debug presets Settings offers, so the label
+    // always agrees with what
+    // Settings shows as selected.
+    readonly property string currentModeLabel: {
+        if (backend.skipIntake && backend.skipAudioDrive) return "デバッグ：YouTube取り込み ⑤"
+        if (backend.skipIntake && backend.skipYoutube) return "デバッグ：音声出力 ③④"
+        if (backend.stopAfterStitch) return "デバッグ：動画取り込み ①②"
+        return backend.driveActive ? "YouTube・音声出力" : "YouTube出力"
+    }
     readonly property int tableRowSpacing: 8
     // Below this, the table can no longer show every column at a readable
     // width — it switches from "stretch columns to fill the panel" to "fix
@@ -119,9 +134,13 @@ ApplicationWindow {
         bottomInset: 0
         leftInset: 0
         rightInset: 0
+        // enabled gated first, same rule everywhere a background reacts to
+        // hover/press (see startButton below) — otherwise a disabled button
+        // still visibly lights up on hover, since Control.hovered tracks
+        // the pointer regardless of enabled.
         background: Rectangle {
             radius: 4
-            color: parent.down ? "#d8dbe2" : (parent.hovered ? "#eef0f4" : "transparent")
+            color: !parent.enabled ? "transparent" : (parent.down ? "#d8dbe2" : (parent.hovered ? "#eef0f4" : "transparent"))
         }
     }
 
@@ -137,7 +156,7 @@ ApplicationWindow {
         rightInset: 0
         background: Rectangle {
             radius: 4
-            color: parent.down ? "#d8dbe2" : (parent.hovered ? "#eef0f4" : "#e4e7ed")
+            color: !parent.enabled ? "#e4e7ed" : (parent.down ? "#d8dbe2" : (parent.hovered ? "#eef0f4" : "#e4e7ed"))
         }
     }
 
@@ -145,6 +164,7 @@ ApplicationWindow {
     // radius, but still rounded — matches the rest of the app's panel
     // language (Rectangle radius:8 elsewhere) rather than fully sharp.
     component CompactDialog: Dialog {
+        id: dlg
         modal: true
         anchors.centerIn: parent
         padding: 20
@@ -152,6 +172,25 @@ ApplicationWindow {
             radius: 8
             color: root.panel
             border.color: root.border
+        }
+        // Material's own default header lays the title out with uneven
+        // top/bottom padding around it (looked off-center in the gray
+        // strip), so — same reasoning as CompactDialogFooter below —
+        // replace it outright rather than fight Material's insets.
+        header: Rectangle {
+            implicitHeight: 52
+            color: root.panelAlt
+            topLeftRadius: 8
+            topRightRadius: 8
+            Label {
+                anchors.left: parent.left
+                anchors.leftMargin: 20
+                anchors.verticalCenter: parent.verticalCenter
+                text: dlg.title
+                font.pixelSize: 16
+                font.bold: true
+                color: root.text
+            }
         }
     }
 
@@ -181,6 +220,7 @@ ApplicationWindow {
             spacing: 12
             RowLayout {
                 Layout.fillWidth: true
+                spacing: 16
                 FlatToolButton {
                     onClicked: root.showSettings = false
                     contentItem: RowLayout {
@@ -342,11 +382,25 @@ ApplicationWindow {
                         // The progress bar lives *between* consecutive
                         // circles (not floating under each one) — its fill
                         // is how many rows have finished this circle's
-                        // stage and are on their way to the next.
+                        // stage and are on their way to the next. Pinned to
+                        // stepCol's *top* (not verticalCenter of the whole
+                        // delegate) because stepCol's total height varies
+                        // with whether the "n / total" sub-label is visible
+                        // (hidden pre-run and for skipped stages) — a
+                        // height-derived offset drifted out of line with
+                        // the circle whenever a neighboring stage's label
+                        // visibility differed from this one's. The circle
+                        // is always stepCol's first child, so its center is
+                        // always exactly 17px (half its own 34px) below
+                        // stepCol's top regardless of what's stacked below
+                        // it. (Can't anchor directly to the circle itself —
+                        // QML only allows anchoring to a parent or a direct
+                        // sibling, and the circle is stepCol's child, not a
+                        // sibling of this bar.)
                         Rectangle {
                             visible: index < backend.stageNames.length - 1
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.verticalCenterOffset: -21
+                            anchors.top: stepCol.top
+                            anchors.topMargin: 17 - 2
                             width: 40; height: 4; radius: 2
                             color: root.panelAlt
                             Rectangle {
@@ -374,35 +428,21 @@ ApplicationWindow {
 
             ColumnLayout {
                 Layout.alignment: Qt.AlignVCenter
-                spacing: 4
+                spacing: 2
 
-                ComboBox {
-                    id: runModeCombo
+                Label {
                     Layout.alignment: Qt.AlignRight
-                    Layout.preferredWidth: 160
-                    implicitHeight: 34
-                    topInset: 0
-                    bottomInset: 0
-                    leftInset: 0
-                    rightInset: 0
-                    enabled: !backend.running
-                    model: ["全行程実施", "①②⑤のみ実施", "①②のみ実施", "③④⑤のみ実施"]
-                    // Index derives from backend state (not tracked locally)
-                    // so it always reflects the true source of truth even if
-                    // that state changes from elsewhere.
-                    currentIndex: backend.skipAudioDrive ? 1 : (backend.stopAfterStitch ? 2 : (backend.skipIntake ? 3 : 0))
-                    background: Rectangle {
-                        implicitHeight: 34
-                        radius: 4
-                        color: "#ffffff"
-                        border.color: root.border
-                        border.width: 1
-                    }
-                    onActivated: {
-                        backend.skipAudioDrive = (currentIndex === 1)
-                        backend.stopAfterStitch = (currentIndex === 2)
-                        backend.skipIntake = (currentIndex === 3)
-                    }
+                    text: "動作モード"
+                    color: root.textDim
+                    font.pixelSize: 11
+                }
+                // No longer a picker — see root.currentModeLabel above for
+                // why (デバッグモードOFF時は選ぶこと自体が無い設計).
+                Label {
+                    Layout.alignment: Qt.AlignRight
+                    text: root.currentModeLabel
+                    color: root.text
+                    font.bold: true
                 }
             }
         }
@@ -535,6 +575,19 @@ ApplicationWindow {
                         model: backend.rowsData
                         contentWidth: Math.max(width, root.minimumTableWidth)
                         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                        // Distinct from a genuinely-empty (but found) folder —
+                        // that case stays a plain blank list, same as always.
+                        // Centered on the ListView itself (not its
+                        // contentItem), so it's unaffected by scroll position.
+                        Label {
+                            anchors.centerIn: parent
+                            visible: backend.sourceMissingMessage.length > 0
+                            text: backend.sourceMissingMessage
+                            color: root.textDim
+                            font.pixelSize: 14
+                        }
+
                         delegate: Rectangle {
                             id: fileRowDelegate
                             property var stageReasons: modelData.reasons
@@ -806,7 +859,9 @@ ApplicationWindow {
                             rightInset: 0
                             background: Rectangle {
                                 radius: 4
-                                color: stopButton.down ? "#d8dbe2" : (stopButton.hovered ? "#eef0f4" : "#e4e7ed")
+                                color: !stopButton.enabled
+                                       ? "#e4e7ed"
+                                       : (stopButton.down ? "#d8dbe2" : (stopButton.hovered ? "#eef0f4" : "#e4e7ed"))
                             }
                             contentItem: Item {
                                 implicitWidth: stopRow.implicitWidth
@@ -927,7 +982,23 @@ ApplicationWindow {
     CompactDialog {
         id: settingsMessageDialog
         property string messageText: ""
+        // Only set when this particular message is the "設定を保存しました"
+        // one (see onConfigSaved below) — this same dialog also surfaces
+        // unrelated messages (auth results, "削除できるファイルはありません
+        // でした" from the clear-folder buttons, ...) where jumping back to
+        // the main screen would be unwanted.
+        property bool returnToMainOnClose: false
         title: "設定"
+        // onClosed (not onAccepted): this dialog only ever has one button
+        // (OK), so dismissing it any other way — clicking outside, Escape —
+        // means the same thing and must not leave the settings screen
+        // stuck waiting for a button that isn't the only way out.
+        onClosed: {
+            if (returnToMainOnClose) {
+                returnToMainOnClose = false
+                root.showSettings = false
+            }
+        }
         Label { text: settingsMessageDialog.messageText }
         footer: CompactDialogFooter {
             SquareDialogButton { text: "OK"; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
@@ -949,16 +1020,60 @@ ApplicationWindow {
         title: "削除の確認"
         property string messageText: ""
         onAccepted: settingsBackend.confirmClearFolder()
-        Label { text: clearFolderConfirmDialog.messageText }
+        ColumnLayout {
+            spacing: 8
+            Label {
+                text: clearFolderConfirmDialog.messageText
+                wrapMode: Text.WordWrap
+                Layout.preferredWidth: 340
+            }
+            // Scrolls once the list outgrows this box rather than growing
+            // the dialog to fit — a folder can hold anywhere from a
+            // handful to hundreds of files.
+            ListView {
+                Layout.preferredWidth: 340
+                Layout.preferredHeight: Math.min(contentHeight, 220)
+                clip: true
+                model: settingsBackend.clearFolderFiles
+                ScrollBar.vertical: ScrollBar {}
+                delegate: Label {
+                    width: ListView.view.width
+                    text: modelData
+                    font.pixelSize: 12
+                    color: root.textDim
+                    elide: Text.ElideMiddle
+                }
+            }
+        }
         footer: CompactDialogFooter {
-            SquareDialogButton { text: "いいえ"; DialogButtonBox.buttonRole: DialogButtonBox.NoRole }
-            SquareDialogButton { text: "はい"; DialogButtonBox.buttonRole: DialogButtonBox.YesRole }
+            SquareDialogButton { text: "キャンセル"; DialogButtonBox.buttonRole: DialogButtonBox.NoRole }
+            SquareDialogButton {
+                text: "削除"
+                DialogButtonBox.buttonRole: DialogButtonBox.YesRole
+                Material.foreground: "#ffffff"
+                background: Rectangle {
+                    radius: 4
+                    color: parent.down ? "#b23a35" : (parent.hovered ? "#dc4f49" : root.fail)
+                }
+            }
         }
     }
     Connections {
         target: settingsBackend
+        // Set by onConfigSaved just below, one tick ahead of onSaved's own
+        // "設定を保存しました" message — save() emits configSaved then saved,
+        // in that order, so this is always fresh by the time onSaved reads
+        // it. Consumed (reset to false) on every onSaved call regardless of
+        // outcome, so a message unrelated to saving never inherits a stale
+        // true left over from how a *previous* dialog got closed.
+        property bool _justSaved: false
+        function onConfigSaved(config) {
+            _justSaved = true
+        }
         function onSaved(message) {
             settingsMessageDialog.messageText = message
+            settingsMessageDialog.returnToMainOnClose = _justSaved
+            _justSaved = false
             settingsMessageDialog.open()
         }
         function onCleanupNone() {

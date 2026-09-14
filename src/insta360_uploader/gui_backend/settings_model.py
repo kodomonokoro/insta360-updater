@@ -93,6 +93,7 @@ class SettingsModel(QObject):
     cleanupDone = Signal(int)  # total_files deleted
     cleanupNone = Signal()
     clearFolderCandidate = Signal(str)  # pre-built confirmation message
+    clearFolderFilesChanged = Signal()  # backs clearFolderFiles below
     clearFolderDone = Signal(int)  # files removed — separate from `saved`
     # so the file table can be refreshed after, like cleanupDone does
     configSaved = Signal(object)  # the new AppConfig — see save(); lets
@@ -105,6 +106,8 @@ class SettingsModel(QObject):
         self.store = store
         self._oauth_worker: QThread | None = None
         self._cleanup_worker = None
+        self._pending_clear_folder: Path | None = None
+        self._clear_folder_files: list[str] = []
         self._load_from(config)
 
     def _load_from(self, config: AppConfig) -> None:
@@ -123,7 +126,10 @@ class SettingsModel(QObject):
         self.made_for_kids = config.youtube_defaults.made_for_kids
         self.playlist_id = config.youtube_defaults.playlist_id or ""
         drive = config.drive
-        self.drive_enabled = drive is not None
+        # Field values populate whenever a DriveConfig exists at all — even
+        # disabled, its fields are exactly what the user last entered, and
+        # should reappear as-is if they flip the toggle back on.
+        self.drive_enabled = drive is not None and drive.enabled
         self.drive_secret_path = str(drive.client_secret_path) if drive else ""
         self.drive_token_path = str(drive.token_path) if drive else ""
         self.drive_folder_id = (drive.folder_id or "") if drive else ""
@@ -338,13 +344,22 @@ class SettingsModel(QObject):
 
     @Slot()
     def save(self):
+        # Keep a DriveConfig (fields intact, just enabled=False) rather than
+        # discarding it back to None the moment the toggle goes off — a
+        # previously-entered secret/token/folder must survive OFF+save, not
+        # just OFF within the current session (self.drive_secret_path etc.
+        # were never cleared either way; the risk was only ever this object
+        # collapsing to None and _app_config_to_dict() then omitting the
+        # whole google_drive section on write). None only for a config
+        # that's never once had Drive enabled at all — no fields to lose.
         drive_config = None
-        if self.drive_enabled:
+        if self.drive_enabled or self.config.drive is not None:
             drive_config = DriveConfig(
                 client_secret_path=Path(self.drive_secret_path or ""),
                 token_path=Path(self.drive_token_path or ""),
                 folder_id=self.drive_folder_id or None,
                 subfolder_prefix=self.drive_subfolder_prefix or None,
+                enabled=self.drive_enabled,
             )
 
         new_config = AppConfig(
@@ -407,20 +422,31 @@ class SettingsModel(QObject):
             return self.config.mp3_folder
         return None
 
+    def get_clear_folder_files(self):
+        return self._clear_folder_files
+
+    clearFolderFiles = Property("QVariantList", get_clear_folder_files, notify=clearFolderFilesChanged)
+
     @Slot(str)
     def checkClearFolder(self, which: str):
         folder = self._folder_for_clearing(which)
         if folder is None:
             return
-        count = cleanup.count_files(folder)
-        if count == 0:
+        files = cleanup.list_files(folder)
+        if not files:
             self.saved.emit("削除できるファイルはありませんでした。")
             return
         self._pending_clear_folder = folder
+        # Relative to folder (not just the bare filename) so a file sitting
+        # inside a subfolder still shows where it actually is — clear_folder_
+        # contents() below deletes subfolders recursively too, not just
+        # top-level files.
+        self._clear_folder_files = [str(p.relative_to(folder)) for p in files]
+        self.clearFolderFilesChanged.emit()
         label = self._CLEAR_FOLDER_LABELS.get(which, which)
         self.clearFolderCandidate.emit(
-            f"{label}内の{count}件のファイルを完全に削除します。よろしいですか?\n"
-            "(アップロード状況に関係なく、フォルダの中身を全て削除します)"
+            f"{label}内の{len(files)}件のファイルを完全に削除します。"
+            "アップロード状況に関係なくフォルダ内を全て削除し、対象は以下の一覧の通りです。"
         )
 
     @Slot()

@@ -71,8 +71,10 @@ def test_validate_for_run_requires_nas_video_folder(tmp_path):
 def test_validate_for_run_passes_when_everything_needed_is_configured(tmp_path):
     assert validate_for_run(_fully_configured(tmp_path), camera=False) is None
     assert validate_for_run(_fully_configured(tmp_path), camera=True) is None
-    assert validate_for_run(_fully_configured(tmp_path), camera=True, stop_after_stitch=True) is None
-    assert validate_for_run(_fully_configured(tmp_path), camera=True, skip_audio_drive=True) is None
+    assert validate_for_run(
+        _fully_configured(tmp_path), camera=True, include_audio_drive=False, include_youtube=False
+    ) is None
+    assert validate_for_run(_fully_configured(tmp_path), camera=True, include_audio_drive=False) is None
 
 
 @pytest.mark.parametrize("camera", [True, False])
@@ -93,32 +95,18 @@ def test_validate_for_run_requires_media_sdk_exe_to_actually_exist(tmp_path):
     assert validate_for_run(config, camera=True) is not None
 
 
-@pytest.mark.parametrize(
-    "camera,stop_after_stitch,skip_audio_drive",
-    [(True, False, False), (False, False, False)],  # 全行程実施, ③④⑤のみ実施
-)
-def test_validate_for_run_requires_mp3_folder_when_audio_drive_stages_are_wanted(
-    tmp_path, camera, stop_after_stitch, skip_audio_drive
-):
+@pytest.mark.parametrize("camera", [True, False])  # YouTube・音声出力, デバッグ：音声出力
+def test_validate_for_run_requires_mp3_folder_when_audio_drive_stages_are_wanted(tmp_path, camera):
     config = replace(_fully_configured(tmp_path), mp3_folder=None)
-    error = validate_for_run(
-        config, camera=camera, stop_after_stitch=stop_after_stitch, skip_audio_drive=skip_audio_drive
-    )
+    error = validate_for_run(config, camera=camera, include_audio_drive=True)
     assert error is not None
     assert "MP3" in error
 
 
-@pytest.mark.parametrize(
-    "camera,stop_after_stitch,skip_audio_drive",
-    [(True, False, False), (False, False, False)],  # 全行程実施, ③④⑤のみ実施
-)
-def test_validate_for_run_requires_drive_when_audio_drive_stages_are_wanted(
-    tmp_path, camera, stop_after_stitch, skip_audio_drive
-):
+@pytest.mark.parametrize("camera", [True, False])  # YouTube・音声出力, デバッグ：音声出力
+def test_validate_for_run_requires_drive_when_audio_drive_stages_are_wanted(tmp_path, camera):
     config = replace(_fully_configured(tmp_path), drive=None)
-    error = validate_for_run(
-        config, camera=camera, stop_after_stitch=stop_after_stitch, skip_audio_drive=skip_audio_drive
-    )
+    error = validate_for_run(config, camera=camera, include_audio_drive=True)
     assert error is not None
     assert "Google Drive" in error
 
@@ -131,15 +119,15 @@ def test_validate_for_run_requires_drive_authentication_when_audio_drive_stages_
 
 
 @pytest.mark.parametrize(
-    "camera,stop_after_stitch,skip_audio_drive",
-    [(True, True, False), (True, False, True)],  # ①②のみ実施, ①②⑤のみ実施
+    "camera,include_audio_drive,include_youtube",
+    [(True, False, False), (True, False, True)],  # デバッグ：動画取り込み(①②), YouTube出力(①②⑤)
 )
 def test_validate_for_run_does_not_require_mp3_or_drive_when_audio_drive_is_skipped(
-    tmp_path, camera, stop_after_stitch, skip_audio_drive
+    tmp_path, camera, include_audio_drive, include_youtube
 ):
     config = replace(_fully_configured(tmp_path), mp3_folder=None, drive=None)
     assert validate_for_run(
-        config, camera=camera, stop_after_stitch=stop_after_stitch, skip_audio_drive=skip_audio_drive
+        config, camera=camera, include_audio_drive=include_audio_drive, include_youtube=include_youtube
     ) is None
 
 
@@ -156,4 +144,15 @@ def test_validate_for_run_does_not_require_youtube_authentication_when_stopping_
     config = replace(_fully_configured(tmp_path), youtube=YoutubeProfile(
         client_secret_path=tmp_path / "x", token_path=tmp_path / "no_yt_token.json"
     ))
-    assert validate_for_run(config, camera=True, stop_after_stitch=True) is None
+    assert validate_for_run(config, camera=True, include_audio_drive=False, include_youtube=False) is None
+
+
+def test_validate_for_run_rejects_include_audio_drive_when_drive_configured_but_disabled(tmp_path):
+    # DriveConfig.enabled=False (the Settings screen toggle off, fields
+    # preserved) must be rejected the same as drive=None — configured but
+    # inactive is still "not usable for this run".
+    config = replace(_fully_configured(tmp_path), drive=replace(_fully_configured(tmp_path).drive, enabled=False))
+    assert not config.drive_active
+    error = validate_for_run(config, camera=True, include_audio_drive=True)
+    assert error is not None
+    assert "Google Drive" in error

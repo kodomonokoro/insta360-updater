@@ -35,6 +35,34 @@ def test_save_emits_config_saved_with_the_new_settings(tmp_path, monkeypatch):
     assert received[0].nas_video_folder == new_folder
 
 
+def test_save_with_drive_disabled_keeps_previously_entered_fields(tmp_path, monkeypatch):
+    # Regression: toggling "GoogleドライブにMP3ファイルを格納する" off and
+    # saving must not discard a previously-entered secret/token/folder —
+    # only the *active* flag should change, not the underlying fields.
+    app = QCoreApplication.instance() or QCoreApplication([])
+    config = _config(tmp_path / "mp4")
+    monkeypatch.setattr("insta360_uploader.gui_backend.settings_model.save_app_config", lambda *a, **k: None)
+    model = SettingsModel(config, ProcessedStore())
+    model.driveEnabled = True
+    model.driveSecretPath = str(tmp_path / "secret.json")
+    model.driveTokenPath = str(tmp_path / "token.json")
+    model.driveFolderId = "folder-123"
+    received = []
+    model.configSaved.connect(received.append)
+    model.save()
+    assert received[-1].drive.enabled is True
+    assert received[-1].drive.folder_id == "folder-123"
+
+    model.driveEnabled = False
+    model.save()
+
+    saved = received[-1]
+    assert saved.drive is not None
+    assert saved.drive.enabled is False
+    assert saved.drive.folder_id == "folder-123"  # not wiped by disabling
+    assert saved.drive_active is False
+
+
 def test_pipeline_model_apply_new_config_updates_config_and_refreshes_without_restart(tmp_path, monkeypatch):
     # This is exactly what gui_qml.py wires configSaved to — the fix that
     # removed the "restart required to see new settings" limitation.
