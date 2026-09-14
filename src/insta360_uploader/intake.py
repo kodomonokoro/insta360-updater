@@ -24,6 +24,7 @@ from typing import Callable
 from insta360_uploader.config import AppConfig
 from insta360_uploader.nas_scanner import VideoFile
 from insta360_uploader.pipeline import Logger, ProgressFn
+from insta360_uploader.process_utils import NO_WINDOW_KWARGS
 from insta360_uploader.processed_store import STATUS_COPYING_RAW, STATUS_STITCHING, ProcessedStore
 from insta360_uploader.stitcher import StitchError, stitch_to_mp4
 
@@ -100,7 +101,7 @@ def _concat_chapters(chapter_mp4_paths: list[Path], output_path: Path, *, ffmpeg
             "mp4",
             str(part_path),
         ]
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, capture_output=True, text=True, **NO_WINDOW_KWARGS)
         if result.returncode != 0 or not part_path.is_file():
             part_path.unlink(missing_ok=True)
             raise StitchError(

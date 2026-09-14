@@ -9,6 +9,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from insta360_uploader.process_utils import NO_WINDOW_KWARGS
+
 
 def probe_duration_seconds(path: Path, ffprobe_path: str = "ffprobe") -> float | None:
     """Best-effort: None if ffprobe is missing or fails, never raises."""
@@ -28,6 +30,7 @@ def probe_duration_seconds(path: Path, ffprobe_path: str = "ffprobe") -> float |
         ],
         capture_output=True,
         text=True,
+        **NO_WINDOW_KWARGS,
     )
     if result.returncode != 0:
         return None
@@ -65,6 +68,7 @@ def probe_resolution_fps(path: Path, ffprobe_path: str = "ffprobe") -> tuple[int
         ],
         capture_output=True,
         text=True,
+        **NO_WINDOW_KWARGS,
     )
     if result.returncode != 0:
         return None

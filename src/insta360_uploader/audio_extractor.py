@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
+from insta360_uploader.process_utils import NO_WINDOW_KWARGS
 from insta360_uploader.video_info import probe_duration_seconds
 
 _OUT_TIME_RE = re.compile(r"^out_time=(\d+):(\d+):(\d+(?:\.\d+)?)$")
@@ -76,6 +77,7 @@ def extract_mp3(
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        **NO_WINDOW_KWARGS,
     )
     output_lines: list[str] = []
     assert process.stdout is not None

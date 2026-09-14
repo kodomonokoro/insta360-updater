@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Callable
 
 from insta360_uploader.config import MediaSdkConfig
+from insta360_uploader.process_utils import NO_WINDOW_KWARGS
 
 _PROGRESS_RE = re.compile(r"process\s*=\s*(\d+(?:\.\d+)?)%")
 
@@ -105,6 +106,7 @@ def _probe_lens_track_widths(insv_path: Path, ffprobe_path: str) -> list[int]:
         capture_output=True,
         text=True,
         errors="replace",
+        **NO_WINDOW_KWARGS,
     )
     if result.returncode != 0:
         raise StitchError(f"failed to probe {insv_path} for lens resolution: {result.stderr}")
@@ -191,6 +193,7 @@ def _verify_stitched_output(part_path: Path, profile: _StitchProfile, ffprobe_pa
         capture_output=True,
         text=True,
         errors="replace",
+        **NO_WINDOW_KWARGS,
     )
     if result.returncode != 0:
         raise StitchError(f"could not verify stitched output {part_path}: ffprobe failed: {result.stderr}")
@@ -264,6 +267,7 @@ def stitch_to_mp4(
         text=True,
         bufsize=1,
         errors="replace",  # never let an undecodable byte from MediaSDKTest's own output kill the stitch
+        **NO_WINDOW_KWARGS,
     )
     output_lines: list[str] = []
     assert process.stdout is not None
